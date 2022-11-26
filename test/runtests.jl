@@ -68,6 +68,20 @@ end
 end
 
 
+@testset "Contingencies" begin
+    @testset "scenario_1/" begin
+        network_model = create_network("./scenario_1/", ACPolarNetworkModel, nlp_solver)
+        network_model.con = [network_model.con[1]]
+
+        build_opf(network_model)
+        build_opf(network_model, 2)
+
+        @test length(network_model.scenarios[1][:pg]) == length(network_model.scenarios[2][:pg]) + 1        
+        @test length(network_model.scenarios[1][:qg]) == length(network_model.scenarios[2][:qg]) + 1        
+    end
+end
+
+
 @testset "SCOPF solver" begin
     
     @testset "iterative cuts" begin

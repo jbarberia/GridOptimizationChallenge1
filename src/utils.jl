@@ -11,8 +11,7 @@ function create_network(directory::String, type::DataType, optimizer)
         raw_data["rop"],
         raw_data["inl"],
         raw_data["con"],
-        JuMP.Model(optimizer),
-        Dict()
+        [JuMP.Model(optimizer) for con in 1:(1+length(raw_data["con"]))] # 1 is base_case
     )
 
     return network_model
@@ -72,8 +71,9 @@ end
 """
 Solves the JuMP optimization model
 """
-function optimize!(network_model::AbstractNetworkModel)
-    JuMP.optimize!(network_model.model)
+function optimize!(network_model::AbstractNetworkModel, scenario=1)
+    model = network_model.scenarios[scenario]
+    JuMP.optimize!(model)
 end
 
 
@@ -84,4 +84,37 @@ function solve!(network_model, builder)
     builder(network_model)
     optimize!(network_model)
     update_network!(network_model)
+end
+
+
+"""
+Apply a contingency to `network_model.net`
+"""
+function apply_contingency(network_model, scenario)
+    contingency = network_model.con[scenario-1]
+    net = network_model.net
+    
+    event = contingency["event"]
+    if event == "Branch Out-of-Service"
+        bus_k, bus_m, name = contingency["id"]
+        br = net.get_branch_from_name_and_bus_numbers(name, bus_k, bus_m)
+        pfnet_contingency = pfnet.Contingency(branches=[br])
+
+    elseif event == "Generator Out-of-Service"
+        bus, name = contingency["id"]
+        gen = net.get_generator_from_name_and_bus_number(name, bus)
+        pfnet_contingency = pfnet.Contingency(generators=[gen])
+    else
+        error("Invalid type of contingency (got: $event)")
+    end
+    pfnet_contingency.apply(net)
+    return pfnet_contingency
+end
+
+
+"""
+Clear the `network_model.net` contingency
+"""
+function clear_contingency(network_model, contingency)
+    contingency.clear(network_model.net)
 end

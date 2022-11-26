@@ -9,6 +9,6 @@ mutable struct ACPolarNetworkModel <: AbstractACNetworkModel
     rop
     inl
     con
-    model::JuMP.Model
-    variable::Dict
+    scenarios::Vector
 end
+

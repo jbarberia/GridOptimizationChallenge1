@@ -1,67 +1,63 @@
 
 
 
-function variable_bus_voltage(network_model::ACPolarNetworkModel)
+function variable_bus_voltage(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 
-    variable["vm"] = Dict()
-    variable["va"] = Dict()
+    model[:vm] = Dict()
+    model[:va] = Dict()
     for bus in net.buses
         if !bus.is_in_service(); continue; end
 
-        variable["vm"][bus.number] = @variable(model, start=bus.v_mag, lower_bound=bus.v_min, upper_bound=bus.v_max)
-        variable["va"][bus.number] = @variable(model, start=bus.v_ang)
+        model[:vm][bus.number] = @variable(model, start=bus.v_mag, lower_bound=bus.v_min, upper_bound=bus.v_max)
+        model[:va][bus.number] = @variable(model, start=bus.v_ang)
     end
 end
 
 
-function variable_gen_power(network_model::ACPolarNetworkModel)
+function variable_gen_power(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 
-    variable["pg"] = Dict()
-    variable["qg"] = Dict()
+    model[:pg] = Dict()
+    model[:qg] = Dict()
     for gen in net.generators
         if !gen.is_in_service(); continue; end
 
         index = (gen.bus.number, gen.name)
-        variable["pg"][index] = @variable(model, start=gen.P, upper_bound=gen.P_max, lower_bound=gen.P_min)
-        variable["qg"][index] = @variable(model, start=gen.Q, upper_bound=gen.Q_max, lower_bound=gen.Q_min)
+        model[:pg][index] = @variable(model, start=gen.P, upper_bound=gen.P_max, lower_bound=gen.P_min)
+        model[:qg][index] = @variable(model, start=gen.Q, upper_bound=gen.Q_max, lower_bound=gen.Q_min)
     end
 end
 
 
-function variable_shunt_adjustment(network_model::ACPolarNetworkModel)
+function variable_shunt_adjustment(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 
-    variable["b_sh"] = Dict()
+    model[:b_sh] = Dict()
     for sh in net.shunts
         index = (sh.bus.number, sh.name)
         if !sh.is_in_service(); continue; end
 
         if sh.is_fixed()
-            variable["b_sh"][index] = sh.b
+            model[:b_sh][index] = sh.b
         else
-            variable["b_sh"][index] = @variable(model, start=sh.b, lower_bound=sh.b_min, upper_bound=sh.b_max)
+            model[:b_sh][index] = @variable(model, start=sh.b, lower_bound=sh.b_min, upper_bound=sh.b_max)
         end
     end
 end
 
 
-function variable_slack_power_balance(network_model::ACPolarNetworkModel)
+function variable_slack_power_balance(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 	
-	variable["sigma_p_mismatch_plus"] = Dict()
-	variable["sigma_p_mismatch_minus"] = Dict()
-	variable["sigma_q_mismatch_plus"] = Dict()
-	variable["sigma_q_mismatch_minus"] = Dict()
+	model[:sigma_p_mismatch_plus] = Dict()
+	model[:sigma_p_mismatch_minus] = Dict()
+	model[:sigma_q_mismatch_plus] = Dict()
+	model[:sigma_q_mismatch_minus] = Dict()
 	
 	for bus in net.buses
 		if !bus.is_in_service(); continue; end
@@ -71,48 +67,46 @@ function variable_slack_power_balance(network_model::ACPolarNetworkModel)
 		q_mis_plus = bus.Q_mismatch >= 0 ? bus.Q_mismatch : 0
 		q_mis_minus = bus.Q_mismatch < 0 ? -bus.Q_mismatch : 0
 		
-		variable["sigma_p_mismatch_plus"][bus.number] = @variable(model, start=p_mis_plus, lower_bound=0)
-		variable["sigma_p_mismatch_minus"][bus.number] = @variable(model, start=p_mis_minus, lower_bound=0)
-		variable["sigma_q_mismatch_plus"][bus.number] = @variable(model, start=q_mis_plus, lower_bound=0)
-		variable["sigma_q_mismatch_minus"][bus.number] = @variable(model, start=q_mis_minus, lower_bound=0)
+		model[:sigma_p_mismatch_plus][bus.number] = @variable(model, start=p_mis_plus, lower_bound=1)
+		model[:sigma_p_mismatch_minus][bus.number] = @variable(model, start=p_mis_minus, lower_bound=1)
+		model[:sigma_q_mismatch_plus][bus.number] = @variable(model, start=q_mis_plus, lower_bound=1)
+		model[:sigma_q_mismatch_minus][bus.number] = @variable(model, start=q_mis_minus, lower_bound=1)
 	end
 end
 
 
-function variable_slack_power_flow_limits(network_model::ACPolarNetworkModel)
+function variable_slack_power_flow_limits(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 	
-	variable["sigma_s_limit"] = Dict()
+	model[:sigma_s_limit] = Dict()
 	
 	for br in net.branches
 		if !br.is_in_service(); continue; end
 		
 		index = (br.name, br.bus_k.number, br.bus_m.number)
 		
-		variable["sigma_s_limit"][index] = @variable(model, lower_bound=0)
+		model[:sigma_s_limit][index] = @variable(model, lower_bound=1)
 	end
 end
 
 
-function expresion_power_flow(network_model::ACPolarNetworkModel)
+function expresion_power_flow(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 	
 	# Placeholder for power flow expresions
-	variable["p_fr"] = Dict()
-    variable["p_to"] = Dict()
-    variable["q_fr"] = Dict()
-    variable["q_to"] = Dict()
+	model[:p_fr] = Dict()
+    model[:p_to] = Dict()
+    model[:q_fr] = Dict()
+    model[:q_to] = Dict()
 
-    p_fr = variable["p_fr"]
-    p_to = variable["p_to"]
-    q_fr = variable["q_fr"]
-    q_to = variable["q_to"]
-    vm = variable["vm"]
-    va = variable["va"]
+    p_fr = model[:p_fr]
+    p_to = model[:p_to]
+    q_fr = model[:q_fr]
+    q_to = model[:q_to]
+    vm = model[:vm]
+    va = model[:va]
 
     for br in net.branches
         if !br.is_in_service(); continue; end
@@ -140,33 +134,32 @@ function expresion_power_flow(network_model::ACPolarNetworkModel)
 end
 
 
-function constraint_power_balance(network_model::ACPolarNetworkModel)
+function constraint_power_balance(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 	
 	# Create power flow expresions
-    if !(haskey(variable, "p_fr") || haskey(variable, "p_to") || haskey(variable, "q_fr") || haskey(variable, "q_to"))
-        expresion_power_flow(network_model)
+    if !(haskey(model, :p_fr) || haskey(model, :p_to) || haskey(model, :q_fr) || haskey(model, :q_to))
+        expresion_power_flow(network_model, scenario)
     end
 	
 	# Using fixed sh.b if shunts are not variables
-    if !(haskey(variable, "b_sh"))
-        variable["b_sh"] = Dict()
+    if !(haskey(model, :b_sh))
+        model[:b_sh] = Dict()
         for sh in net.shunts
             index = (sh.bus.number, sh.name)
-            variable["b_sh"][index] = sh.b
+            model[:b_sh][index] = sh.b
         end
     end
     
-    pg = variable["pg"]
-    qg = variable["qg"]
-    b_sh = variable["b_sh"]
-    p_fr = variable["p_fr"]
-    p_to = variable["p_to"]
-    q_fr = variable["q_fr"]
-    q_to = variable["q_to"]
-    vm = variable["vm"]
+    pg = model[:pg]
+    qg = model[:qg]
+    b_sh = model[:b_sh]
+    p_fr = model[:p_fr]
+    p_to = model[:p_to]
+    q_fr = model[:q_fr]
+    q_to = model[:q_to]
+    vm = model[:vm]
 
     for bus in net.buses
         if !bus.is_in_service(); continue; end
@@ -192,43 +185,42 @@ function constraint_power_balance(network_model::ACPolarNetworkModel)
 end
 
 
-function constraint_power_balance_soft(network_model::ACPolarNetworkModel)
+function constraint_power_balance_soft(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario]
 	
 	# Create power flow expresions
-    if !(haskey(variable, "p_fr") || haskey(variable, "p_to") || haskey(variable, "q_fr") || haskey(variable, "q_to"))
-        expresion_power_flow(network_model)
+    if !(haskey(model, :p_fr) || haskey(model, :p_to) || haskey(model, :q_fr) || haskey(model, :q_to))
+        expresion_power_flow(network_model, scenario)
     end
 	
 	# Using fixed sh.b if shunts are not variables
-    if !(haskey(variable, "b_sh"))
-        variable["b_sh"] = Dict()
+    if !(haskey(model, :b_sh))
+        model[:b_sh] = Dict()
         for sh in net.shunts
             index = (sh.bus.number, sh.name)
-            variable["b_sh"][index] = sh.b
+            model[:b_sh][index] = sh.b
         end
     end
 	
 	# add slacks variables
-	if !(haskey(variable, "sigma_p_mismatch_plus") || haskey(variable, "sigma_p_mismatch_minus") || haskey(variable, "sigma_q_mismatch_plus") || haskey(variable, "sigma_q_mismatch_minus"))
+	if !(haskey(model, :sigma_p_mismatch_plus) || haskey(model, :sigma_p_mismatch_minus) || haskey(model, :sigma_q_mismatch_plus) || haskey(model, :sigma_q_mismatch_minus))
 		variable_slack_power_balance(network_model)
 	end
 	
-	sigma_p_mismatch_plus = variable["sigma_p_mismatch_plus"]
-	sigma_p_mismatch_minus = variable["sigma_p_mismatch_minus"]
-	sigma_q_mismatch_plus = variable["sigma_q_mismatch_plus"]
-	sigma_q_mismatch_minus = variable["sigma_q_mismatch_minus"]
+	sigma_p_mismatch_plus = model[:sigma_p_mismatch_plus]
+	sigma_p_mismatch_minus = model[:sigma_p_mismatch_minus]
+	sigma_q_mismatch_plus = model[:sigma_q_mismatch_plus]
+	sigma_q_mismatch_minus = model[:sigma_q_mismatch_minus]
     
-    pg = variable["pg"]
-    qg = variable["qg"]
-    b_sh = variable["b_sh"]
-    p_fr = variable["p_fr"]
-    p_to = variable["p_to"]
-    q_fr = variable["q_fr"]
-    q_to = variable["q_to"]
-    vm = variable["vm"]
+    pg = model[:pg]
+    qg = model[:qg]
+    b_sh = model[:b_sh]
+    p_fr = model[:p_fr]
+    p_to = model[:p_to]
+    q_fr = model[:q_fr]
+    q_to = model[:q_to]
+    vm = model[:vm]
 	
     for bus in net.buses
         if !bus.is_in_service(); continue; end
@@ -254,21 +246,20 @@ function constraint_power_balance_soft(network_model::ACPolarNetworkModel)
 end
 
 
-function constraint_power_flow_limits(network_model::ACPolarNetworkModel)
+function constraint_power_flow_limits(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 	
 	# Compute branch power expresions
-    if !(haskey(variable, "p_fr") || haskey(variable, "p_to") || haskey(variable, "q_fr") || haskey(variable, "q_to"))
-        expresion_power_flow(network_model)
+    if !(haskey(model, :p_fr) || haskey(model, :p_to) || haskey(model, :q_fr) || haskey(model, :q_to))
+        expresion_power_flow(network_model, scenario)
     end
 
-    p_fr = variable["p_fr"]
-    p_to = variable["p_to"]
-    q_fr = variable["q_fr"]
-    q_to = variable["q_to"]
-    vm = variable["vm"]
+    p_fr = model[:p_fr]
+    p_to = model[:p_to]
+    q_fr = model[:q_fr]
+    q_to = model[:q_to]
+    vm = model[:vm]
 
     for br in net.branches
         if !br.is_in_service(); continue; end
@@ -298,28 +289,27 @@ function constraint_power_flow_limits(network_model::ACPolarNetworkModel)
 end
 
 
-function constraint_power_flow_limits_soft(network_model::ACPolarNetworkModel)
+function constraint_power_flow_limits_soft(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 	
 	# Compute branch power expresions
-    if !(haskey(variable, "p_fr") || haskey(variable, "p_to") || haskey(variable, "q_fr") || haskey(variable, "q_to"))
-        expresion_power_flow(network_model)
+    if !(haskey(model, :p_fr) || haskey(model, :p_to) || haskey(model, :q_fr) || haskey(model, :q_to))
+        expresion_power_flow(network_model, scenario)
     end
 	
 	# Add slack variables
-	if !(haskey(variable, "sigma_s_limit"))
+	if !(haskey(model, :sigma_s_limit))
 		variable_slack_power_flow_limits(network_model)
 	end
 	
-	sigma_s_limit = variable["sigma_s_limit"]
+	sigma_s_limit = model[:sigma_s_limit]
 	
-    p_fr = variable["p_fr"]
-    p_to = variable["p_to"]
-    q_fr = variable["q_fr"]
-    q_to = variable["q_to"]
-    vm = variable["vm"]
+    p_fr = model[:p_fr]
+    p_to = model[:p_to]
+    q_fr = model[:q_fr]
+    q_to = model[:q_to]
+    vm = model[:vm]
 	
     for br in net.branches
         if !br.is_in_service(); continue; end
@@ -349,12 +339,11 @@ function constraint_power_flow_limits_soft(network_model::ACPolarNetworkModel)
 end
 
 
-function constraint_reference_bus(network_model::ACPolarNetworkModel)
+function constraint_reference_bus(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 
-    va = variable["va"]
+    va = model[:va]
 
     for bus in net.buses
         if !bus.is_in_service(); continue; end
@@ -366,49 +355,47 @@ function constraint_reference_bus(network_model::ACPolarNetworkModel)
 end
 
 
-function constraint_gen_pv(network_model::ACPolarNetworkModel)
+function constraint_gen_pv(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    model = network_model.model
-    variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 
     for bus in net.buses
         if !!bus.is_in_service(); continue; end
         if !bus.is_regulated_by_gen(); continue; end
 
-        fix(variable["vm"][bus.number], bus.v_mag)
+        fix(model[:vm][bus.number], bus.v_mag)
 
         # Get generator vars free to slack bus
         if bus.is_slack(); continue; end
 
         for gen in bus.generators
             index = (gen.bus.number, gen.name)
-            fix(variable["pg"][index], gen.P)
+            fix(model[:pg][index], gen.P)
         end
     end
 end
 
 
-function objective_generator_cost(network_model::ACPolarNetworkModel)
+function objective_generator_cost(network_model::ACPolarNetworkModel, scenario=1)
     update_generator_costs!(network_model)
     net = network_model.net
-    model = network_model.model
-    pg = network_model.variable["pg"]
+    model = network_model.scenarios[scenario] 
+    pg = model[:pg]
 
     @objective(model, Min, 
     sum(
         gen.cost_coeff_Q2 * pg[gen.bus.number, gen.name]^2 +
         gen.cost_coeff_Q1 * pg[gen.bus.number, gen.name] +
         gen.cost_coeff_Q0
-        for gen in net.generators)
+        for gen in net.generators if gen.is_in_service())
     )
 end
 
 
-function objective_generator_cost_plus_penalties(network_model::ACPolarNetworkModel, kwargs...)
+function objective_generator_cost_plus_penalties(network_model::ACPolarNetworkModel, scenario=1, kwargs...)
     update_generator_costs!(network_model)
     net = network_model.net
-    model = network_model.model
-	variable = network_model.variable
+    model = network_model.scenarios[scenario] 
 	
 	# default penalty coefficients
     dict_kwargs = Dict(kwargs)
@@ -416,19 +403,19 @@ function objective_generator_cost_plus_penalties(network_model::ACPolarNetworkMo
 	c_p = haskey(dict_kwargs, :c_s) ? dict_kwargs[:c_p] : 1e3 * net.base_power
 	c_q = haskey(dict_kwargs, :c_q) ? dict_kwargs[:c_q] : 1e3 * net.base_power
 	
-    pg = variable["pg"]
-	sigma_s_limit = variable["sigma_s_limit"]
-	sigma_p_mismatch_plus = variable["sigma_p_mismatch_plus"]
-	sigma_p_mismatch_minus = variable["sigma_p_mismatch_minus"]
-	sigma_q_mismatch_plus = variable["sigma_q_mismatch_plus"]
-	sigma_q_mismatch_minus = variable["sigma_q_mismatch_minus"]
+    pg = model[:pg]
+	sigma_s_limit = model[:sigma_s_limit]
+	sigma_p_mismatch_plus = model[:sigma_p_mismatch_plus]
+	sigma_p_mismatch_minus = model[:sigma_p_mismatch_minus]
+	sigma_q_mismatch_plus = model[:sigma_q_mismatch_plus]
+	sigma_q_mismatch_minus = model[:sigma_q_mismatch_minus]
 	
     @objective(model, Min, 
     sum(
         gen.cost_coeff_Q2 * pg[gen.bus.number, gen.name]^2 +
         gen.cost_coeff_Q1 * pg[gen.bus.number, gen.name] +
         gen.cost_coeff_Q0
-        for gen in net.generators) + 
+        for gen in net.generators if gen.is_in_service()) + 
 	c_s * sum(s_limit for s_limit in values(sigma_s_limit)) +
 	c_p * sum(p_mis for p_mis in values(sigma_p_mismatch_plus)) +
 	c_p * sum(p_mis for p_mis in values(sigma_p_mismatch_minus)) +
@@ -443,14 +430,14 @@ end
 Update the results of the optimization model ´network_model.model´
 to the ´network_model.net´ PFNET network
 """
-function update_network!(network_model::ACPolarNetworkModel)
+function update_network!(network_model::ACPolarNetworkModel, scenario=1)
     net = network_model.net
-    variable = network_model.variable
-    vm = variable["vm"]
-    va = variable["va"]
-    pg = variable["pg"]
-    qg = variable["qg"]
-    b_sh = variable["b_sh"]
+    model = network_model.scenarios[scenario] 
+    vm = model[:vm]
+    va = model[:va]
+    pg = model[:pg]
+    qg = model[:qg]
+    b_sh = model[:b_sh]
 
     for bus in net.buses
         if !bus.is_in_service(); continue; end
