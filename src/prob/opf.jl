@@ -15,7 +15,7 @@ function build_opf(network_model, kwargs...)
 	objective_generator_cost(network_model)
 end
 
-s
+
 """
 Build a GOC1 base case opf with soft constraints in
 power balance and branch flow limits

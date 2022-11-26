@@ -86,8 +86,8 @@ function variable_slack_power_flow_limits(network_model::ACPolarNetworkModel)
 	
 	variable["sigma_s_limit"] = Dict()
 	
-	for branch in net.branches
-		if !branch.is_in_service(); continue; end
+	for br in net.branches
+		if !br.is_in_service(); continue; end
 		
 		index = (br.name, br.bus_k.number, br.bus_m.number)
 		
@@ -172,20 +172,20 @@ function constraint_power_balance(network_model::ACPolarNetworkModel)
         if !bus.is_in_service(); continue; end
 
         @NLconstraint(model,     
-            sum(pg[gen.bus.number, gen.name] for gen in bus.generators)
-            - sum(load.P for load in bus.loads)
-            - sum(sh.g * vm[bus.number]^2 for sh in bus.shunts)
-            - sum(p_fr[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_k)
-            - sum(p_to[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_m)
+            sum(pg[gen.bus.number, gen.name] for gen in bus.generators if gen.is_in_service())
+            - sum(load.P for load in bus.loads if load.is_in_service())
+            - sum(sh.g * vm[bus.number]^2 for sh in bus.shunts if sh.is_in_service())
+            - sum(p_fr[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_k if br.is_in_service())
+            - sum(p_to[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_m if br.is_in_service())
             == 0.
         )
 
         @NLconstraint(model,     
-            sum(qg[gen.bus.number, gen.name] for gen in bus.generators) 
-            - sum(load.Q for load in bus.loads)
-            + sum(b_sh[sh.bus.number, sh.name] * vm[bus.number]^2 for sh in bus.shunts)
-            - sum(q_fr[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_k)
-            - sum(q_to[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_m)
+            sum(qg[gen.bus.number, gen.name] for gen in bus.generators if gen.is_in_service()) 
+            - sum(load.Q for load in bus.loads if load.is_in_service())
+            + sum(b_sh[sh.bus.number, sh.name] * vm[bus.number]^2 for sh in bus.shunts if sh.is_in_service())
+            - sum(q_fr[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_k if br.is_in_service())
+            - sum(q_to[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_m if br.is_in_service())
             == 0.
         )
     end
@@ -239,7 +239,7 @@ function constraint_power_balance_soft(network_model::ACPolarNetworkModel)
             - sum(sh.g * vm[bus.number]^2 for sh in bus.shunts)
             - sum(p_fr[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_k)
             - sum(p_to[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_m)
-            == sigma_p_mismatch_plus + sigma_p_mismatch_minus
+            == sigma_p_mismatch_plus[bus.number] + sigma_p_mismatch_minus[bus.number]
         )
 
         @NLconstraint(model,     
@@ -248,7 +248,7 @@ function constraint_power_balance_soft(network_model::ACPolarNetworkModel)
             + sum(b_sh[sh.bus.number, sh.name] * vm[bus.number]^2 for sh in bus.shunts)
             - sum(q_fr[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_k)
             - sum(q_to[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_m)
-            == sigma_q_mismatch_plus + sigma_q_mismatch_minus
+            == sigma_q_mismatch_plus[bus.number] + sigma_q_mismatch_minus[bus.number]
         )
     end
 end
@@ -366,9 +366,32 @@ function constraint_reference_bus(network_model::ACPolarNetworkModel)
 end
 
 
+function constraint_gen_pv(network_model::ACPolarNetworkModel)
+    net = network_model.net
+    model = network_model.model
+    variable = network_model.variable
+
+    for bus in net.buses
+        if !!bus.is_in_service(); continue; end
+        if !bus.is_regulated_by_gen(); continue; end
+
+        fix(variable["vm"][bus.number], bus.v_mag)
+
+        # Get generator vars free to slack bus
+        if bus.is_slack(); continue; end
+
+        for gen in bus.generators
+            index = (gen.bus.number, gen.name)
+            fix(variable["pg"][index], gen.P)
+        end
+    end
+end
+
+
 function objective_generator_cost(network_model::ACPolarNetworkModel)
     update_generator_costs!(network_model)
     net = network_model.net
+    model = network_model.model
     pg = network_model.variable["pg"]
 
     @objective(model, Min, 
@@ -384,12 +407,14 @@ end
 function objective_generator_cost_plus_penalties(network_model::ACPolarNetworkModel, kwargs...)
     update_generator_costs!(network_model)
     net = network_model.net
+    model = network_model.model
 	variable = network_model.variable
 	
 	# default penalty coefficients
-	c_s = haskey(kwargs, :c_s) ? kwargs[:c_s] : 1e3 * net.base_power
-	c_p = haskey(kwargs, :c_s) ? kwargs[:c_p] : 1e3 * net.base_power
-	c_q = haskey(kwargs, :c_q) ? kwargs[:c_q] : 1e3 * net.base_power
+    dict_kwargs = Dict(kwargs)
+	c_s = haskey(dict_kwargs, :c_s) ? dict_kwargs[:c_s] : 1e3 * net.base_power
+	c_p = haskey(dict_kwargs, :c_s) ? dict_kwargs[:c_p] : 1e3 * net.base_power
+	c_q = haskey(dict_kwargs, :c_q) ? dict_kwargs[:c_q] : 1e3 * net.base_power
 	
     pg = variable["pg"]
 	sigma_s_limit = variable["sigma_s_limit"]
@@ -404,11 +429,11 @@ function objective_generator_cost_plus_penalties(network_model::ACPolarNetworkMo
         gen.cost_coeff_Q1 * pg[gen.bus.number, gen.name] +
         gen.cost_coeff_Q0
         for gen in net.generators) + 
-	c_s * sum(s_limit	for s_limit in values(sigma_s_limit)) +
+	c_s * sum(s_limit for s_limit in values(sigma_s_limit)) +
 	c_p * sum(p_mis for p_mis in values(sigma_p_mismatch_plus)) +
 	c_p * sum(p_mis for p_mis in values(sigma_p_mismatch_minus)) +
 	c_q * sum(q_mis for q_mis in values(sigma_q_mismatch_plus)) +
-	c_q * sum(q_mis for q_mis in values(sigma_q_mismatch_minus)) +
+	c_q * sum(q_mis for q_mis in values(sigma_q_mismatch_minus))
     )
 	
 end
