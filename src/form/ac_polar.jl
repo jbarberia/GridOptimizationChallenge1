@@ -161,10 +161,16 @@ function constraint_power_balance(network_model::ACPolarNetworkModel, scenario=1
     q_to = model[:q_to]
     vm = model[:vm]
 
+    # Constraint reference
+    model[:constraint_bus_power_balance_p] = Dict()
+    model[:constraint_bus_power_balance_q] = Dict()
+    constraint_bus_power_balance_p = model[:constraint_bus_power_balance_p]
+    constraint_bus_power_balance_q = model[:constraint_bus_power_balance_q]
+
     for bus in net.buses
         if !bus.is_in_service(); continue; end
 
-        @NLconstraint(model,     
+        constraint_bus_power_balance_p[bus.number] = @NLconstraint(model,     
             sum(pg[gen.bus.number, gen.name] for gen in bus.generators if gen.is_in_service())
             - sum(load.P for load in bus.loads if load.is_in_service())
             - sum(sh.g * vm[bus.number]^2 for sh in bus.shunts if sh.is_in_service())
@@ -173,7 +179,7 @@ function constraint_power_balance(network_model::ACPolarNetworkModel, scenario=1
             == 0.
         )
 
-        @NLconstraint(model,     
+        constraint_bus_power_balance_q[bus.number] = @NLconstraint(model,     
             sum(qg[gen.bus.number, gen.name] for gen in bus.generators if gen.is_in_service()) 
             - sum(load.Q for load in bus.loads if load.is_in_service())
             + sum(b_sh[sh.bus.number, sh.name] * vm[bus.number]^2 for sh in bus.shunts if sh.is_in_service())
@@ -221,11 +227,17 @@ function constraint_power_balance_soft(network_model::ACPolarNetworkModel, scena
     q_fr = model[:q_fr]
     q_to = model[:q_to]
     vm = model[:vm]
-	
+
+    # Constraint reference
+    model[:constraint_bus_power_balance_p] = Dict()
+    model[:constraint_bus_power_balance_q] = Dict()
+    constraint_bus_power_balance_p = model[:constraint_bus_power_balance_p]
+    constraint_bus_power_balance_q = model[:constraint_bus_power_balance_q]
+
     for bus in net.buses
         if !bus.is_in_service(); continue; end
 
-        @NLconstraint(model,     
+        constraint_bus_power_balance_p[bus.number] = @NLconstraint(model,     
             sum(pg[gen.bus.number, gen.name] for gen in bus.generators)
             - sum(load.P for load in bus.loads)
             - sum(sh.g * vm[bus.number]^2 for sh in bus.shunts)
@@ -234,7 +246,7 @@ function constraint_power_balance_soft(network_model::ACPolarNetworkModel, scena
             == sigma_p_mismatch_plus[bus.number] + sigma_p_mismatch_minus[bus.number]
         )
 
-        @NLconstraint(model,     
+        constraint_bus_power_balance_q[bus.number] = @NLconstraint(model,     
             sum(qg[gen.bus.number, gen.name] for gen in bus.generators) 
             - sum(load.Q for load in bus.loads)
             + sum(b_sh[sh.bus.number, sh.name] * vm[bus.number]^2 for sh in bus.shunts)
@@ -310,7 +322,7 @@ function constraint_power_flow_limits_soft(network_model::ACPolarNetworkModel, s
     q_fr = model[:q_fr]
     q_to = model[:q_to]
     vm = model[:vm]
-	
+
     for br in net.branches
         if !br.is_in_service(); continue; end
         
