@@ -491,8 +491,6 @@ function update_network!(network_model::ACPolarNetworkModel, scenario=1)
     end
 
     for gen in net.generators
-        if !gen.is_in_service(); continue; end
-
         index = (gen.bus.number, gen.name)
 
         gen.P = JuMP.value(pg[index])
@@ -501,9 +499,7 @@ function update_network!(network_model::ACPolarNetworkModel, scenario=1)
 
     end
 
-    for sh in net.shunts
-        if !sh.is_in_service(); continue; end
-        
+    for sh in net.shunts        
         index = (sh.bus.number, sh.name)
         sh.b = JuMP.value(b_sh[index])
     end

@@ -32,6 +32,9 @@ end
         optimize!(network_model)
         update_network!(network_model)
         
+        @test network_model.net.get_generator_from_name_and_bus_number("3 ", 499).is_in_service() == false
+        @test JuMP.value(network_model.scenarios[1][:pg][499, "3 "]) == 0.
+
         @test network_model.net.gen_P_cost <= 2.80e6
     end
     
