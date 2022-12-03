@@ -22,8 +22,12 @@ Returns a mapping with a representation of the 4 input files for the GOC1.
 Does not check duplicates.
 """
 function read_directory(directory::String)
+
+    py_parser_raw = pfnet.PyParserRAW()
+    py_parser_raw.set("keep_all_out_of_service", true)
+
     parse_file_with_extension = Dict(
-        "raw" => x -> pfnet.PyParserRAW().parse(x),
+        "raw" => x -> py_parser_raw.parse(x),
         "rop" => x -> GOC_IO.parse_rop(x),
         "inl" => x -> GOC_IO.parse_inl(x),
         "con" => x -> GOC_IO.parse_con(x),

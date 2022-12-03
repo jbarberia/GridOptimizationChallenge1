@@ -6,7 +6,7 @@ import JuMP
 nlp_solver = JuMP.optimizer_with_attributes(
     Ipopt.Optimizer,
     "print_level" => 2,
-    "tol" => 1e-6
+    "tol" => 1e-8
 )
 
 @testset "Network creation" begin
@@ -17,6 +17,8 @@ nlp_solver = JuMP.optimizer_with_attributes(
     @test network_model.rop isa Dict{Any, Any}
 
     @test network_model.net.get_num_buses() == 500
+    @test network_model.net.get_num_generators() == 224
+    @test network_model.net.get_num_generators_out_of_service() == 70
     @test network_model.con[1]["name"] == "G_000272NORTHPORT31U1"
     @test network_model.inl[472, "2 "]["alpha_g"] == 24.5
     @test network_model.rop[472, "2 "]["x"] |> length == network_model.rop[472, "2 "]["n_points"]
@@ -76,8 +78,8 @@ end
         build_opf(network_model)
         build_opf(network_model, 2)
 
-        @test length(network_model.scenarios[1][:pg]) == length(network_model.scenarios[2][:pg]) + 1        
-        @test length(network_model.scenarios[1][:qg]) == length(network_model.scenarios[2][:qg]) + 1        
+        @test length(network_model.scenarios[1][:pg]) == length(network_model.scenarios[2][:pg])        
+        @test length(network_model.scenarios[1][:qg]) == length(network_model.scenarios[2][:qg])        
     end
 end
 

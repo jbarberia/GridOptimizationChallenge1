@@ -23,11 +23,16 @@ function variable_gen_power(network_model::ACPolarNetworkModel, scenario=1)
     model[:pg] = Dict()
     model[:qg] = Dict()
     for gen in net.generators
-        if !gen.is_in_service(); continue; end
 
         index = (gen.bus.number, gen.name)
         model[:pg][index] = @variable(model, start=gen.P, upper_bound=gen.P_max, lower_bound=gen.P_min)
         model[:qg][index] = @variable(model, start=gen.Q, upper_bound=gen.Q_max, lower_bound=gen.Q_min)
+
+        if !gen.is_in_service()
+            fix(model[:pg][index], 0., force=true)
+            fix(model[:qg][index], 0., force=true)
+        end
+
     end
 end
 
@@ -171,7 +176,7 @@ function constraint_power_balance(network_model::ACPolarNetworkModel, scenario=1
         if !bus.is_in_service(); continue; end
 
         constraint_bus_power_balance_p[bus.number] = @NLconstraint(model,     
-            sum(pg[gen.bus.number, gen.name] for gen in bus.generators if gen.is_in_service())
+            sum(pg[gen.bus.number, gen.name] for gen in bus.generators)
             - sum(load.P for load in bus.loads if load.is_in_service())
             - sum(sh.g * vm[bus.number]^2 for sh in bus.shunts if sh.is_in_service())
             - sum(p_fr[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_k if br.is_in_service())
@@ -180,7 +185,7 @@ function constraint_power_balance(network_model::ACPolarNetworkModel, scenario=1
         )
 
         constraint_bus_power_balance_q[bus.number] = @NLconstraint(model,     
-            sum(qg[gen.bus.number, gen.name] for gen in bus.generators if gen.is_in_service()) 
+            sum(qg[gen.bus.number, gen.name] for gen in bus.generators) 
             - sum(load.Q for load in bus.loads if load.is_in_service())
             + sum(b_sh[sh.bus.number, sh.name] * vm[bus.number]^2 for sh in bus.shunts if sh.is_in_service())
             - sum(q_fr[br.name, br.bus_k.number, br.bus_m.number] for br in bus.branches_k if br.is_in_service())
@@ -384,6 +389,33 @@ function constraint_gen_pv(network_model::ACPolarNetworkModel, scenario=1)
             index = (gen.bus.number, gen.name)
             fix(model[:pg][index], gen.P)
         end
+    end
+end
+
+
+function constraint_gen_link_active_power(network_model::ACPolarNetworkModel, scenario_1, scenario_2)
+    net = network_model.net
+    model_1 = network_model.scenarios[scenario_1]
+    model_2 = network_model.scenarios[scenario_2]
+
+    # fix model2 vars
+    for gen in net.generators
+        if !gen.is_in_service(); continue; end
+        index = (gen.bus.number, gen.name)
+        fix(model_2[:pg][index], JuMP.value(model_1[:pg][index]))
+    end
+end
+
+
+function constraint_bus_link_voltage_magnitude(network_model::ACPolarNetworkModel, scenario_1, scenario_2)
+    net = network_model.net
+    model_1 = network_model.scenarios[scenario_1]
+    model_2 = network_model.scenarios[scenario_2]
+
+    # fix model_2 vars
+    for bus in net.buses
+        if !bus.is_in_service(); continue; end
+        fix(model_2[:vm][bus.number], JuMP.value(model_1[:vm][bus.index]))
     end
 end
 
