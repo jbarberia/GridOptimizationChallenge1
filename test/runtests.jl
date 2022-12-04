@@ -1,6 +1,6 @@
 using GridOptimizationChallenge1
 using Test
-import Ipopt
+using Ipopt
 import JuMP
 
 nlp_solver = JuMP.optimizer_with_attributes(
@@ -26,6 +26,7 @@ end
 
 
 @testset "OPF base case scenario_1" begin
+    
     @testset "hard formulation" begin
         network_model = create_network("./scenario_1/", ACPolarNetworkModel, nlp_solver)
         build_opf(network_model)
@@ -40,6 +41,15 @@ end
     
     @testset "soft formulation" begin
         network_model = create_network("./scenario_1/", ACPolarNetworkModel, nlp_solver)
+        build_opf_soft(network_model)
+        optimize!(network_model)
+        update_network!(network_model)
+    
+        @test network_model.net.gen_P_cost <= 2.80e6    
+    end
+    
+    @testset "DC model" begin
+        network_model = create_network("./scenario_1/", DCNetworkModel, nlp_solver)
         build_opf_soft(network_model)
         optimize!(network_model)
         update_network!(network_model)

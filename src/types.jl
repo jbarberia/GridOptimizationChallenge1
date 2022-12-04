@@ -12,3 +12,11 @@ mutable struct ACPolarNetworkModel <: AbstractACNetworkModel
     scenarios::Vector
 end
 
+mutable struct DCNetworkModel <: AbstractNetworkModel
+    net
+    rop
+    inl
+    con
+    scenarios::Vector
+end
+

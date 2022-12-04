@@ -30,6 +30,7 @@ function solve_benders_cuts_scopf(network_model)
         end
 
         # Solve PF (TODO: use `build_contingency_pf`)
+        # TODO actualizar y pensar idea
         net_contingency.apply(net)
         solve!(network_con_model, build_pf)
 
