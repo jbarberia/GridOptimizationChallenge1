@@ -14,7 +14,7 @@ function variable_bus_voltage(network_model::DCNetworkModel, scenario=1)
 end
 
 
-function variable_gen_power(network_model::DCNetworkModel, scenario=1)
+function variable_gen_power(network_model::DCNetworkModel, scenario=1, bounded=true)
     net = network_model.net
     model = network_model.scenarios[scenario] 
 
@@ -23,6 +23,11 @@ function variable_gen_power(network_model::DCNetworkModel, scenario=1)
 
         index = (gen.bus.number, gen.name)
         model[:pg][index] = @variable(model, start=gen.P, upper_bound=gen.P_max, lower_bound=gen.P_min)
+
+        if bounded
+            set_lower_bound(model[:pg][index], gen.P_min)
+            set_upper_bound(model[:pg][index], gen.P_max)
+        end
 
         if !gen.is_in_service()
             fix(model[:pg][index], 0., force=true)

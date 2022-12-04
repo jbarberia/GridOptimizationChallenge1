@@ -1,7 +1,7 @@
 
 
 
-function variable_bus_voltage(network_model::ACPolarNetworkModel, scenario=1)
+function variable_bus_voltage(network_model::ACPolarNetworkModel, scenario=1, bounded=true)
     net = network_model.net
     model = network_model.scenarios[scenario] 
 
@@ -10,13 +10,18 @@ function variable_bus_voltage(network_model::ACPolarNetworkModel, scenario=1)
     for bus in net.buses
         if !bus.is_in_service(); continue; end
 
-        model[:vm][bus.number] = @variable(model, start=bus.v_mag, lower_bound=bus.v_min, upper_bound=bus.v_max)
+        model[:vm][bus.number] = @variable(model, start=bus.v_mag)
         model[:va][bus.number] = @variable(model, start=bus.v_ang)
+        
+        if bounded
+            set_lower_bound(model[:vm][bus.number], bus.v_min)
+            set_upper_bound(model[:vm][bus.number], bus.v_max)
+        end
     end
 end
 
 
-function variable_gen_power(network_model::ACPolarNetworkModel, scenario=1)
+function variable_gen_power(network_model::ACPolarNetworkModel, scenario=1, bounded=true)
     net = network_model.net
     model = network_model.scenarios[scenario] 
 
@@ -25,19 +30,26 @@ function variable_gen_power(network_model::ACPolarNetworkModel, scenario=1)
     for gen in net.generators
 
         index = (gen.bus.number, gen.name)
-        model[:pg][index] = @variable(model, start=gen.P, upper_bound=gen.P_max, lower_bound=gen.P_min)
-        model[:qg][index] = @variable(model, start=gen.Q, upper_bound=gen.Q_max, lower_bound=gen.Q_min)
-
+        model[:pg][index] = @variable(model, start=gen.P)
+        model[:qg][index] = @variable(model, start=gen.Q)
+        
+        if bounded
+            set_lower_bound(model[:pg][index], gen.P_min)
+            set_upper_bound(model[:pg][index], gen.P_max)
+            
+            set_lower_bound(model[:qg][index], gen.Q_min)
+            set_upper_bound(model[:qg][index], gen.Q_max)
+        end
+        
         if !gen.is_in_service()
             fix(model[:pg][index], 0., force=true)
             fix(model[:qg][index], 0., force=true)
         end
-
     end
 end
 
 
-function variable_shunt_adjustment(network_model::ACPolarNetworkModel, scenario=1)
+function variable_shunt_adjustment(network_model::ACPolarNetworkModel, scenario=1, bounded=true)
     net = network_model.net
     model = network_model.scenarios[scenario] 
 
@@ -51,7 +63,12 @@ function variable_shunt_adjustment(network_model::ACPolarNetworkModel, scenario=
         else
             lower_bound=sh.b_values |> minimum
             upper_bound=sh.b_values |> maximum
-            model[:b_sh][index] = @variable(model, start=sh.b, lower_bound=lower_bound, upper_bound=upper_bound)
+            model[:b_sh][index] = @variable(model, start=sh.b)
+
+            if bounded
+                set_lower_bound(model[:b_sh][index], lower_bound)
+                set_upper_bound(model[:b_sh][index], upper_bound)
+            end
         end
     end
 end
