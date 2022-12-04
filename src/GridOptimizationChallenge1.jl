@@ -1,32 +1,25 @@
 module GridOptimizationChallenge1
 
+using PowerModelsSecurityConstrained
+using PowerModels
 using JuMP
-using PyCall
 
-# Python packages
-const pfnet = PyNULL()
-const GOC_IO = PyNULL()
-function __init__()
-	copy!(pfnet, pyimport("pfnet"))
-	copy!(GOC_IO, pyimport("GOC_IO"))
-end
+const PM = PowerModels
+const IM = PowerModels.InfrastructureModels
+const PMSC = PowerModelsSecurityConstrained
 
-export ACPolarNetworkModel, DCNetworkModel
-export pfnet
-export read_directory, create_network, update_network!
-export build_pf, build_opf, build_opf_soft ,optimize!
-export solve_benders_cuts_scopf
+export PMSC
+export PM
 
+include("core/constraint_template.jl")
+include("core/variable.jl")
 
-include("types.jl")
-include("utils.jl")
+include("form/acp.jl")
+include("form/acr.jl")
 
-include("form/ac_polar.jl")
-include("form/dc.jl")
-include("prob/opf.jl")	# OPF problems (base case)
-include("prob/pf.jl")   # PF problems
-include("prob/scopf.jl")	#SCOPF problems
+include("prob/opf.jl")
 
-
+# this must come last to support automated export
+include("core/export.jl")
 
 end
