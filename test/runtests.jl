@@ -66,8 +66,8 @@ end
         @test pre_bus_p_mis >= post_bus_p_mis
         @test pre_bus_q_mis >= post_bus_q_mis
 
-        @test post_bus_p_mis <= 1e-8
-        @test post_bus_p_mis <= 1e-8
+        @test post_bus_p_mis <= 1e-6
+        @test post_bus_p_mis <= 1e-6
     end
     
 end

@@ -49,7 +49,9 @@ function variable_shunt_adjustment(network_model::ACPolarNetworkModel, scenario=
         if sh.is_fixed()
             model[:b_sh][index] = sh.b
         else
-            model[:b_sh][index] = @variable(model, start=sh.b, lower_bound=sh.b_min, upper_bound=sh.b_max)
+            lower_bound=sh.b_values |> minimum
+            upper_bound=sh.b_values |> maximum
+            model[:b_sh][index] = @variable(model, start=sh.b, lower_bound=lower_bound, upper_bound=upper_bound)
         end
     end
 end
