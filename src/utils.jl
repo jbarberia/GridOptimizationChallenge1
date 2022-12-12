@@ -1,124 +1,100 @@
 
 
 """
-Returns a `network_model` of the given type
+Given a dict data format network performs all the set-up to run a model for that case
+- Set up rating
+- Set up voltages bounds
+- Set up initial values
 """
-function create_network(directory::String, type::DataType, optimizer)
-    raw_data = read_directory(directory)
+function set_up_network_to_contingency!(network::Dict{String, Any})
 
-    network_model = type(
-        raw_data["raw"],
-        raw_data["rop"],
-        raw_data["inl"],
-        raw_data["con"],
-        [JuMP.Model(optimizer) for con in 1:(1+length(raw_data["con"]))] # 1 is base_case
-    )
-
-    return network_model
-end
-
-"""
-Returns a mapping with a representation of the 4 input files for the GOC1.
-Does not check duplicates.
-"""
-function read_directory(directory::String)
-
-    py_parser_raw = pfnet.PyParserRAW()
-    py_parser_raw.set("keep_all_out_of_service", true)
-
-    parse_file_with_extension = Dict(
-        "raw" => x -> py_parser_raw.parse(x),
-        "rop" => x -> GOC_IO.parse_rop(x),
-        "inl" => x -> GOC_IO.parse_inl(x),
-        "con" => x -> GOC_IO.parse_con(x),
-    )
-
-    data = Dict()
-    for file in readdir(directory)
-        extension = split(file, ".")[end]
-        data[extension] = parse_file_with_extension[extension]("$directory/$file")
+    for (i,bus) in network["bus"]
+        bus["vmax"] = get(bus, "evhi", bus["vmax"])
+        bus["vmin"] = get(bus, "evlo", bus["vmin"])
     end
 
-    !haskey(data, "raw") && error("`.raw` file not found in $(directory)")
-    !haskey(data, "rop") && error("`.rop` file not found in $(directory)")
-    !haskey(data, "inl") && error("`.inl` file not found in $(directory)")
-    !haskey(data, "con") && error("`.con` file not found in $(directory)")
+    for (i,branch) in network["branch"]
+        branch["rate_a"] = get(branch, "rate_c", branch["rate_a"])
+    end
 
-    return data
-end
+    network["delta"] = 0.0
 
+    for (i,bus) in network["bus"]
+        bus["vm_base"] = bus["vm"]
+        bus["vm_start"] = bus["vm"]
+        bus["va_start"] = bus["va"]
+        bus["vm_fixed"] = bus["bus_type"] == 2
+    end
 
-"""
-Update ´cost_coeff_Q´ in the generators of the ´network_model.net´
-
-Units of coefficients:
-- cost_coeff_Q0 [\$/hr]
-- cost_coeff_Q1 [\$/hr/pu]
-- cost_coeff_Q2 [\$/hr/pu^2]
-"""
-function update_generator_costs!(network_model::AbstractNetworkModel)
-    net = network_model.net
-    rop = network_model.rop
-
-    for gen in net.generators
-        gen_name = gen.name
-        index = (gen.bus.number, gen_name)
-        Q2, Q1, Q0 = rop[index]["coefficients"]
+    for (i,gen) in network["gen"]
+        gen["pg_base"] = gen["pg"]
+        gen["pg_start"] = gen["pg"]
+        gen["qg_start"] = gen["qg"]
+        gen["pg_fixed"] = false
+        gen["qg_fixed"] = false
+    end
     
-        gen.cost_coeff_Q0 = Q0
-        gen.cost_coeff_Q1 = Q1 * net.base_power
-        gen.cost_coeff_Q2 = Q2 * net.base_power^2
-    end
 end
 
+"""
+Compute the `pg_loss` of the contingency.
+Apply generator response flags.
+"""
+function apply_gen_contingency!(network::Dict{String, Any}, contingency::NamedTuple)
+    network["cont_label"] = contingency.label
 
-"""
-Solves the JuMP optimization model
-"""
-function optimize!(network_model::AbstractNetworkModel, scenario=1)
-    model = network_model.scenarios[scenario]
-    JuMP.optimize!(model)
-end
-
-
-"""
-Build, solves and update data for a given optimization problem
-"""
-function solve!(network_model, builder)
-    builder(network_model)
-    optimize!(network_model)
-    update_network!(network_model)
-end
-
-
-"""
-Apply a contingency to `network_model.net`
-"""
-function apply_contingency(network_model, scenario)
-    contingency = network_model.con[scenario-1]
-    net = network_model.net
+    # Set generator status
+    contingency_gen = network["gen"]["$(contingency.idx)"]
+    contingency_gen["contingency"] = true
+    contingency_gen["gen_status"] = 0
     
-    event = contingency["event"]
-    if event == "Branch Out-of-Service"
-        bus_k, bus_m, name = contingency["id"]
-        br = net.get_branch_from_name_and_bus_numbers(name, bus_k, bus_m)
-        pfnet_contingency = pfnet.Contingency(branches=[br])
+    # Set area response flags
+    gen_bus = network["bus"]["$(contingency_gen["gen_bus"])"]
+    network["response_gens"] = network["area_gens"][gen_bus["area"]]
+    
+    # Compute the pg loss (not set `pg` to zero because gen is already o.o.s.)
+    pg_loss = contingency_gen["pg"]
+    return pg_loss
+end
 
-    elseif event == "Generator Out-of-Service"
-        bus, name = contingency["id"]
-        gen = net.get_generator_from_name_and_bus_number(name, bus)
-        pfnet_contingency = pfnet.Contingency(generators=[gen])
-    else
-        error("Invalid type of contingency (got: $event)")
-    end
-    pfnet_contingency.apply(net)
-    return pfnet_contingency
+"""
+Add some status mapping to results and correct the contingency solution
+"""
+function apply_contingency_post_processor!(network, result, contingency)
+    result["solution"]["label"] = contingency.label
+    result["solution"]["feasible"] = result["termination_status"] == LOCALLY_SOLVED
+    result["solution"]["cont_type"] = contingency.type
+    result["solution"]["cont_comp_id"] = contingency.idx
+
+    PMSC.correct_c1_contingency_solution!(network, result["solution"])
 end
 
 
 """
-Clear the `network_model.net` contingency
+Compute the `pg_loss` of the contingency.
+Apply generator response flags.
 """
-function clear_contingency(network_model, contingency)
-    contingency.clear(network_model.net)
+function apply_branch_contingency!(network::Dict{String, Any}, contingency::NamedTuple)
+    network["cont_label"] = contingency.label
+
+    # Set branch status
+    contingency_branch = network["branch"]["$(contingency.idx)"]
+    contingency_branch["contingency"] = true
+    contingency_branch["br_status"] = 0
+
+    # Set area response flags
+    fr_bus = network["bus"]["$(contingency_branch["f_bus"])"]
+    to_bus = network["bus"]["$(contingency_branch["t_bus"])"]
+    
+    network["response_gens"] = Set()
+    if haskey(network["area_gens"], fr_bus["area"])
+        network["response_gens"] = network["area_gens"][fr_bus["area"]]
+    end
+    if haskey(network["area_gens"], to_bus["area"])
+        network["response_gens"] = union(network["response_gens"], network["area_gens"][to_bus["area"]])
+    end
+
+    # Compute `pg_loss`
+    pg_loss = 0
+    return pg_loss
 end

@@ -1,49 +1,48 @@
-
-
 """
-Build a GOC1 base case opf with hard constraints
+An OPF formulation with soft thermal limits on branches 
 """
-function build_opf(network_model, scenario=1; kwargs...)
-	if scenario > 1
-		contingency = apply_contingency(network_model, scenario)
-	end
+function build_opf_branch_thermal_limit_soft(pm::PM.AbstractPowerModel)
+    # -- Variables
+    PM.variable_bus_voltage(pm)
+    PM.variable_gen_power(pm)
+    PM.variable_branch_power(pm, bounded=false)
 
-	variable_bus_voltage(network_model, scenario; kwargs...)
-	variable_gen_power(network_model, scenario; kwargs...)
-	variable_shunt_adjustment(network_model, scenario; kwargs...)
+    variable_branch_power_slack(pm)
+    variable_shunt_admitance_imaginary(pm)
 
-	constraint_power_balance(network_model, scenario; kwargs...)
-	constraint_power_flow_limits(network_model, scenario; kwargs...)
-	constraint_reference_bus(network_model, scenario; kwargs...)
+    PM.constraint_model_voltage(pm)
 
-	objective_generator_cost(network_model, scenario; kwargs...)
+    # -- Constraints
+    for i in ids(pm, :ref_buses)
+        PM.constraint_theta_ref(pm, i)
+    end
 
-	if scenario > 1
-		clear_contingency(network_model, contingency)
-	end
+    for i in ids(pm, :bus)
+        constraint_power_balance_with_shunts(pm, i)
+    end
+
+    for (i, branch) in ref(pm, :branch)
+        constraint_power_flow_from(pm, i)
+        constraint_power_flow_to(pm, i)
+
+        if branch["source_id"] == "branch"
+            constraint_thermal_limit_line_from_soft(pm, i)
+            constraint_thermal_limit_line_to_soft(pm, i)
+            
+        elseif branch["source_id"] == "transformer"
+            constraint_thermal_limit_transformer_from_soft(pm, i)
+            constraint_thermal_limit_transformer_to_soft(pm, i)
+        end
+    end
+
+    # -- Objective
+    PM.objective_variable_pg_cost(pm)
+    pg_cost = var(pm, :pg_cost)
+    sm_slack = var(pm, :sm_slack)
+
+    @objective(pm.model, Min,
+        sum(pg_cost[i] for (i,gen) in ref(pm,:gen))+
+        5e5*sum(sm_slack[l] for (l,branch) in ref(pm, :branch_sm_active))
+    )
 end
 
-
-"""
-Build a GOC1 base case opf with soft constraints in
-power balance and branch flow limits
-"""
-function build_opf_soft(network_model, scenario=1; kwargs...)
-	if scenario > 1
-		contingency = apply_contingency(network_model, scenario)
-	end
-	
-	variable_bus_voltage(network_model, scenario; kwargs...)
-	variable_gen_power(network_model, scenario; kwargs...)
-	variable_shunt_adjustment(network_model, scenario; kwargs...)
-
-	constraint_power_balance_soft(network_model, scenario; kwargs...)
-	constraint_power_flow_limits_soft(network_model, scenario; kwargs...)
-	constraint_reference_bus(network_model, scenario; kwargs...)
-
-	objective_generator_cost_plus_penalties(network_model, scenario; kwargs...)
-
-	if scenario > 1
-		clear_contingency(network_model, contingency)
-	end
-end
