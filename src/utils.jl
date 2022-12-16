@@ -52,6 +52,15 @@ function apply_gen_contingency!(network::Dict{String, Any}, contingency::NamedTu
     gen_bus = network["bus"]["$(contingency_gen["gen_bus"])"]
     network["response_gens"] = network["area_gens"][gen_bus["area"]]
     
+    # Set non response generators as fixed
+    for (i, gen) in network["gen"]
+        if gen in network["response_gens"]
+            gen["pg_fixed"] = false
+        else
+            gen["pg_fixed"] = true
+        end
+    end
+
     # Compute the pg loss (not set `pg` to zero because gen is already o.o.s.)
     pg_loss = contingency_gen["pg"]
     return pg_loss
@@ -92,6 +101,15 @@ function apply_branch_contingency!(network::Dict{String, Any}, contingency::Name
     end
     if haskey(network["area_gens"], to_bus["area"])
         network["response_gens"] = union(network["response_gens"], network["area_gens"][to_bus["area"]])
+    end
+
+    # Set non response generators as fixed
+    for (i, gen) in network["gen"]
+        if gen in network["response_gens"]
+            gen["pg_fixed"] = false
+        else
+            gen["pg_fixed"] = true
+        end
     end
 
     # Compute `pg_loss`

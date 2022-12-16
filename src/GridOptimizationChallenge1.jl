@@ -18,6 +18,7 @@ include("form/acp.jl")
 include("form/acr.jl")
 
 include("prob/opf.jl")
+include("prob/pf.jl")
 include("utils.jl")
 
 # this must come last to support automated export

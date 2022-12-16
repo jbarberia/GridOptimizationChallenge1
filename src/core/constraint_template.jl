@@ -106,3 +106,39 @@ function constraint_thermal_limit_transformer_to_soft(pm::PM.AbstractPowerModel,
         constraint_thermal_limit_to_from(pm, nw, t_idx, branch["rate_a"])
     end
 end
+
+### gen ###
+
+"""
+Simple complementary constraints of gen response using Fischer-Burmesiter approximation with `eta` smoothness parameter (1e-4)
+"""
+function constraint_gen_response_active(pm::PM.AbstractPowerModel, i::Int; nw::Int=nw_id_default, eta::Float64=1e-4)
+    gen = ref(pm, nw, :gen, i)
+    pg_base = gen["pg_base"]
+    pmax = gen["pmax"] 
+    pmin = gen["pmin"] 
+    alpha = gen["alpha"]
+    delta = ref(pm, nw, :delta)
+
+    pg = var(pm, nw, :pg, i)
+    pg_slack_pos = var(pm, nw, :pg_slack_pos, i)
+    pg_slack_neg = var(pm, nw, :pg_slack_pos, i)
+
+    constraint = JuMP.@constraint(pm.model, pg + pg_slack_pos - pg_slack_neg == pg_base + alpha * delta)
+    JuMP.@NLconstraint(pm.model, pg_slack_pos + (pmax - pg) - sqrt(pg_slack_pos^2 + (pmax - pg)^2 + 2*eta))
+    JuMP.@NLconstraint(pm.model, pg_slack_neg + (pmin - pg) - sqrt(pg_slack_neg^2 + (pmin - pg)^2 + 2*eta))
+
+    if IM.report_duals(pm)
+        sol(pm, n, :bus, i)[:dual_constraint_gen_response_active] = constraint
+    end
+end
+
+"""
+Simple complementary constraints of gen response using Fischer-Burmesiter approximation with `eta` smoothness parameter (1e-4)
+"""
+function constrain_gen_response_reactive(pm::PM.AbstractPowerModel, i::Int; nw::Int=nw_id_default, eta::Float64=1e-4)
+
+
+
+    
+end

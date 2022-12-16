@@ -9,46 +9,9 @@ nlp_solver = JuMP.optimizer_with_attributes(
     "tol" => 1e-8
 )
 
-@testset "Example of resolution of the base case" begin
-    # Read file
-    goc_data = parse_c1_files(
-        "scenario_1/case.con",
-        "scenario_1/case.inl",
-        "scenario_1/case.raw",
-        "scenario_1/case.rop",
-        scenario_id="scenario_1")
-    network = build_c1_pm_model(goc_data)
-
-    # Solve model
-    result = solve_model(
-        network,
-        PM.ACPPowerModel,
-        nlp_solver,
-        build_opf_branch_thermal_limit_soft,
-        ref_extensions=[ref_c1!],
-        setting = Dict("output" => Dict("branch_flows" => true, "duals" => true)) # Compute branch flows & duals
-    )
-    
-    # Update and correct solution
-    update_data!(network, result["solution"])
-    correct_c1_solution!(network)
-
-    # Testing
-    @test result["primal_status"] == MOI.FEASIBLE_POINT
-    @test result["dual_status"] == MOI.FEASIBLE_POINT
-end
-
-
-@testset "Example of resolution of the contingency case" begin
+@testset "Example of resolution of the contingency case with cuts and custom PF" begin
     #= 
-    This is a simple implementation. The network is solved trough an OPF of the base case
-    Later the power flow is computed for each one of the contingencies
 
-    DO NOT LOOP AGAIN TO FIX CONTINGENCIES IN THE BASE CASE
-
-    How to evaluate this:
-
-    python ~/.python/Evaluation/test.py scenario_1/case.raw scenario_1/case.rop scenario_1/case.con scenario_1/case.inl solution_1.txt ssolution_2.txt summary.csv detail.csv
     =#
 
     # Read file
@@ -82,11 +45,20 @@ end
     set_up_network_to_contingency!(network)
     
     for contingency in network["gen_contingencies"]
+        contingency = network["gen_contingencies"][1]
         contingency_network = deepcopy(network)
         
         # Solve the PF contingency
         pg_loss = apply_gen_contingency!(contingency_network, contingency)
-        result = PMSC.run_c1_fixpoint_pf_pvpq!(contingency_network, pg_loss, nlp_solver, iteration_limit=5)
+        result = solve_model(
+            network,
+            PM.ACPPowerModel,
+            nlp_solver,
+            build_pf_generator_response,
+            ref_extensions=[ref_c1!],
+            setting = Dict("output" => Dict("branch_flows" => true, "duals" => true)) # Compute branch flows & duals
+        )
+        @assert result["solution"] in [MOI.FEASIBLE_POINT, MOI.LOCALLY_SOLVED]
         apply_contingency_post_processor!(contingency_network, result, contingency)
 
         # Writes the data in a file
@@ -100,7 +72,14 @@ end
         
         # Solve the PF contingency
         pg_loss = apply_branch_contingency!(contingency_network, contingency)
-        result = PMSC.run_c1_fixpoint_pf_pvpq!(contingency_network, pg_loss, nlp_solver, iteration_limit=5)
+        result = solve_model(
+            network,
+            PM.ACPPowerModel,
+            nlp_solver,
+            build_pf_generator_response,
+            ref_extensions=[ref_c1!],
+            setting = Dict("output" => Dict("branch_flows" => true, "duals" => true)) # Compute branch flows & duals
+        )        
         apply_contingency_post_processor!(contingency_network, result, contingency)
 
         # Writes the data in a file
